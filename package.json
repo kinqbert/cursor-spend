@@ -1,0 +1,14 @@
+{
+  "name": "cursor-spend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Local dashboard for this Cursor billing cycle's spend",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "spend": "node src/cli.js"
+  }
+}

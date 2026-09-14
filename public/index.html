@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cursor spend</title>
+    <style>
+      :root {
+        --bg: #0f1115;
+        --panel: #171a21;
+        --line: #2a2f3a;
+        --text: #e8eaed;
+        --muted: #9aa3b2;
+        --accent: #7c9cff;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font: 15px/1.45 ui-sans-serif, system-ui, -apple-system, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+      main {
+        max-width: 860px;
+        margin: 0 auto;
+        padding: 40px 24px 80px;
+      }
+      h1 { font-size: 22px; font-weight: 600; margin: 0 0 4px; }
+      .sub { color: var(--muted); margin-bottom: 28px; }
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 12px;
+        margin-bottom: 28px;
+      }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 16px 18px;
+      }
+      .card.hero { border-color: var(--accent); }
+      .card .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+      .card .value { font-size: 28px; font-weight: 600; margin-top: 6px; font-variant-numeric: tabular-nums; }
+      .note { color: var(--muted); margin: 0 0 24px; }
+      .error {
+        background: #2a1515;
+        border: 1px solid #5c2a2a;
+        color: #f0c0c0;
+        padding: 14px 16px;
+        border-radius: 10px;
+        white-space: pre-wrap;
+      }
+      table { width: 100%; border-collapse: collapse; }
+      th, td {
+        text-align: left;
+        padding: 10px 8px;
+        border-bottom: 1px solid var(--line);
+        font-variant-numeric: tabular-nums;
+      }
+      th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+      td.num, th.num { text-align: right; }
+      .muted { color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Your billing cycle</h1>
+      <p class="sub" id="cycle">Loading…</p>
+      <div id="content"></div>
+    </main>
+    <script>
+      const usd = (n) =>
+        new Intl.NumberFormat("en-US", {
+          style: "currency",
+          currency: "USD",
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }).format(n);
+
+      const date = (value) => {
+        if (value == null || value === "") return "unknown";
+        const ms =
+          typeof value === "number"
+            ? value < 1e12
+              ? value * 1000
+              : value
+            : /^\d+(\.\d+)?$/.test(String(value).trim())
+              ? Number(value) < 1e12
+                ? Number(value) * 1000
+                : Number(value)
+              : Date.parse(value);
+        if (!Number.isFinite(ms)) return "unknown";
+        return new Date(ms).toLocaleDateString("en-US", {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+        });
+      };
+
+      function card(label, value, extraClass = "") {
+        return `<div class="card ${extraClass}"><div class="label">${label}</div><div class="value">${value}</div></div>`;
+      }
+
+      function compact(n) {
+        return new Intl.NumberFormat("en-US").format(n);
+      }
+
+      async function main() {
+        const cycleEl = document.getElementById("cycle");
+        const content = document.getElementById("content");
+        try {
+          const res = await fetch("/api/spend");
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || res.statusText);
+
+          const who = data.you?.email ?? "you";
+          const plan = data.membershipType ? ` · ${data.membershipType}` : "";
+          cycleEl.textContent = `${who}${plan} · ${date(data.cycleStart)} → ${date(data.cycleEnd)}`;
+
+          const notes = [data.messages?.auto, data.messages?.api].filter(Boolean);
+          const models = data.models ?? [];
+
+          content.innerHTML = `
+            <div class="cards">
+              ${card("On-demand (extra billed)", usd(data.onDemand.usedDollars), "hero")}
+              ${card("Included usage", usd(data.plan.includedDollars))}
+              ${card("Plan consumed", usd(data.plan.totalDollars))}
+              ${data.plan.limitDollars ? card("Plan limit", usd(data.plan.limitDollars)) : ""}
+            </div>
+            ${notes.length ? `<p class="note">${notes.join("<br>")}</p>` : ""}
+            ${
+              models.length
+                ? `<table>
+                    <thead>
+                      <tr>
+                        <th>Model</th>
+                        <th class="num">Input</th>
+                        <th class="num">Output</th>
+                        <th class="num">Cost</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${models
+                        .map(
+                          (m) => `<tr>
+                            <td>${m.model}</td>
+                            <td class="num muted">${compact(m.inputTokens)}</td>
+                            <td class="num muted">${compact(m.outputTokens)}</td>
+                            <td class="num">${usd(m.totalDollars)}</td>
+                          </tr>`,
+                        )
+                        .join("")}
+                    </tbody>
+                  </table>`
+                : ""
+            }
+          `;
+        } catch (error) {
+          cycleEl.textContent = "";
+          content.innerHTML = `<div class="error">${error.message}</div>`;
+        }
+      }
+
+      main();
+    </script>
+  </body>
+</html>
