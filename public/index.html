@@ -130,11 +130,18 @@
         return new Intl.NumberFormat("en-US").format(n);
       }
 
+      const REFRESH_INTERVAL_MS = 15_000;
+      let refreshInFlight = false;
+      let hasLoaded = false;
+
       async function main() {
+        if (refreshInFlight) return;
+        refreshInFlight = true;
+
         const cycleEl = document.getElementById("cycle");
         const content = document.getElementById("content");
         try {
-          const res = await fetch("/api/spend");
+          const res = await fetch("/api/spend", { cache: "no-store" });
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || res.statusText);
 
@@ -203,13 +210,21 @@
                 : ""
             }
           `;
+          hasLoaded = true;
         } catch (error) {
-          cycleEl.textContent = "";
-          content.innerHTML = `<div class="error">${error.message}</div>`;
+          if (!hasLoaded) {
+            cycleEl.textContent = "";
+            content.innerHTML = `<div class="error">${error.message}</div>`;
+          } else {
+            console.error("Failed to refresh spend data", error);
+          }
+        } finally {
+          refreshInFlight = false;
         }
       }
 
       main();
+      setInterval(main, REFRESH_INTERVAL_MS);
     </script>
   </body>
 </html>
