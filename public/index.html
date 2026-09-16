@@ -67,6 +67,29 @@
         border-radius: inherit;
       }
       .note { color: var(--muted); margin: 0 0 24px; }
+      .usage-tabs {
+        display: flex;
+        gap: 22px;
+        margin-bottom: 10px;
+        border-bottom: 1px solid var(--line);
+      }
+      .usage-tab {
+        margin-bottom: -1px;
+        padding: 10px 0;
+        border: 0;
+        border-bottom: 2px solid transparent;
+        background: none;
+        color: var(--muted);
+        font: inherit;
+        cursor: pointer;
+      }
+      .usage-tab:hover { color: var(--text); }
+      .usage-tab[aria-selected="true"] {
+        border-bottom-color: var(--accent);
+        color: var(--text);
+      }
+      .usage-panel[hidden] { display: none; }
+      .empty { color: var(--muted); padding: 18px 8px; }
       .error {
         background: #2a1515;
         border: 1px solid #5c2a2a;
@@ -84,6 +107,10 @@
       }
       th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
       td.num, th.num { text-align: right; }
+      th.on-demand-col, td.on-demand-col {
+        color: var(--text);
+        font-weight: 600;
+      }
       .muted { color: var(--muted); }
     </style>
   </head>
@@ -130,9 +157,38 @@
         return new Intl.NumberFormat("en-US").format(n);
       }
 
+      const dayDate = (value) =>
+        new Date(`${value}T00:00:00Z`).toLocaleDateString("en-US", {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+        });
+
       const REFRESH_INTERVAL_MS = 15_000;
       let refreshInFlight = false;
       let hasLoaded = false;
+      let activeUsageTab = "models";
+
+      function activateUsageTab(content, tab) {
+        activeUsageTab = tab;
+        for (const button of content.querySelectorAll("[data-usage-tab]")) {
+          const selected = button.dataset.usageTab === tab;
+          button.setAttribute("aria-selected", String(selected));
+          button.tabIndex = selected ? 0 : -1;
+        }
+        for (const panel of content.querySelectorAll("[data-usage-panel]")) {
+          panel.hidden = panel.dataset.usagePanel !== tab;
+        }
+      }
+
+      function bindUsageTabs(content) {
+        for (const button of content.querySelectorAll("[data-usage-tab]")) {
+          button.addEventListener("click", () => {
+            activateUsageTab(content, button.dataset.usageTab);
+          });
+        }
+        activateUsageTab(content, activeUsageTab);
+      }
 
       async function main() {
         if (refreshInFlight) return;
@@ -151,6 +207,7 @@
 
           const notes = [data.messages?.auto, data.messages?.api].filter(Boolean);
           const models = data.models ?? [];
+          const days = data.days ?? [];
           const onDemandUsed = Math.max(0, Number(data.onDemand?.usedDollars) || 0);
           const apiOnDemandLimit = Number(data.onDemand?.limitDollars);
           const onDemandLimit =
@@ -183,9 +240,34 @@
               </div>
             </div>
             ${notes.length ? `<p class="note">${notes.join("<br>")}</p>` : ""}
-            ${
-              models.length
-                ? `<table>
+            <div class="usage-tabs" role="tablist" aria-label="Usage breakdown">
+              <button
+                class="usage-tab"
+                id="models-tab"
+                type="button"
+                role="tab"
+                aria-controls="models-panel"
+                data-usage-tab="models"
+              >Per-model usage</button>
+              <button
+                class="usage-tab"
+                id="days-tab"
+                type="button"
+                role="tab"
+                aria-controls="days-panel"
+                data-usage-tab="days"
+              >Per-day usage</button>
+            </div>
+            <section
+              class="usage-panel"
+              id="models-panel"
+              role="tabpanel"
+              aria-labelledby="models-tab"
+              data-usage-panel="models"
+            >
+              ${
+                models.length
+                  ? `<table>
                     <thead>
                       <tr>
                         <th>Model</th>
@@ -207,9 +289,43 @@
                         .join("")}
                     </tbody>
                   </table>`
-                : ""
-            }
+                  : `<div class="empty">No model usage yet.</div>`
+              }
+            </section>
+            <section
+              class="usage-panel"
+              id="days-panel"
+              role="tabpanel"
+              aria-labelledby="days-tab"
+              data-usage-panel="days"
+            >
+              ${
+                days.length
+                  ? `<table>
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th class="num">Included</th>
+                        <th class="num on-demand-col">On-demand</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${days
+                        .map(
+                          (day) => `<tr>
+                            <td>${dayDate(day.date)}</td>
+                            <td class="num muted">${usd(day.includedDollars)}</td>
+                            <td class="num on-demand-col">${usd(day.onDemandDollars)}</td>
+                          </tr>`,
+                        )
+                        .join("")}
+                    </tbody>
+                  </table>`
+                  : `<div class="empty">No daily usage yet.</div>`
+              }
+            </section>
           `;
+          bindUsageTabs(content);
           hasLoaded = true;
         } catch (error) {
           if (!hasLoaded) {
