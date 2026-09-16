@@ -26,7 +26,21 @@
         padding: 40px 24px 80px;
       }
       h1 { font-size: 22px; font-weight: 600; margin: 0 0 4px; }
-      .sub { color: var(--muted); margin-bottom: 28px; }
+      .sub-row {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 28px;
+      }
+      .sub { color: var(--muted); margin: 0; }
+      .refresh-timer {
+        flex: none;
+        color: var(--muted);
+        font-size: 13px;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
       .cards {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -112,12 +126,18 @@
         font-weight: 600;
       }
       .muted { color: var(--muted); }
+      @media (max-width: 600px) {
+        .sub-row { align-items: flex-start; flex-direction: column; gap: 4px; }
+      }
     </style>
   </head>
   <body>
     <main>
       <h1>Your billing cycle</h1>
-      <p class="sub" id="cycle">Loading…</p>
+      <div class="sub-row">
+        <p class="sub" id="cycle">Loading…</p>
+        <span class="refresh-timer" id="refresh-timer">Next fetch in 30s</span>
+      </div>
       <div id="content"></div>
     </main>
     <script>
@@ -164,10 +184,21 @@
           day: "numeric",
         });
 
-      const REFRESH_INTERVAL_MS = 15_000;
+      const REFRESH_INTERVAL_MS = 30_000;
       let refreshInFlight = false;
       let hasLoaded = false;
       let activeUsageTab = "models";
+      let nextRefreshAt = Date.now() + REFRESH_INTERVAL_MS;
+
+      function updateRefreshTimer() {
+        const timer = document.getElementById("refresh-timer");
+        if (refreshInFlight) {
+          timer.textContent = "Refreshing…";
+          return;
+        }
+        const seconds = Math.max(0, Math.ceil((nextRefreshAt - Date.now()) / 1000));
+        timer.textContent = `Next fetch in ${seconds}s`;
+      }
 
       function activateUsageTab(content, tab) {
         activeUsageTab = tab;
@@ -336,11 +367,18 @@
           }
         } finally {
           refreshInFlight = false;
+          updateRefreshTimer();
         }
       }
 
       main();
-      setInterval(main, REFRESH_INTERVAL_MS);
+      updateRefreshTimer();
+      setInterval(() => {
+        nextRefreshAt = Date.now() + REFRESH_INTERVAL_MS;
+        main();
+        updateRefreshTimer();
+      }, REFRESH_INTERVAL_MS);
+      setInterval(updateRefreshTimer, 1000);
     </script>
   </body>
 </html>
